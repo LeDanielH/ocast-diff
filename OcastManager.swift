@@ -1,63 +1,62 @@
 // Copyright (c) 2018, nangu.TV, a.s. All rights reserved.
 // nangu.TV, a.s PROPRIETARY/CONFIDENTIAL. Use is subject to license terms.
 
-import OCast
-import React
 import InnopiaDriver
+import OCast
+import OCastPrivate
+import React
 
 @objc(OCastManager)
-class OCastManager: RCTEventEmitter {
-    public let AP_LIST_OBTAINED = "OCast:AP_LIST_OBTAINED";
-    public let DEVICE_AVAILABLE = "OCast:DEVICE_AVAILABLE";
-    public let DEVICE_CONNECTED = "OCast:DEVICE_CONNECTED";
-    public let DEVICE_DISCONNECTED = "OCast:DEVICE_DISCONNECTED";
-    public let DEVICE_LOST = "OCast:DEVICE_LOST";
-    public let DEVICE_PAIRED = "OCast:DEVICE_PAIRED";
-    public let ERROR_EVENT = "OCast:ERROR_EVENT";
-    public let METADATA_CHANGED = "OCast:METADATA_CHANGED";
-    public let PIN_NEEDED = "OCast:PIN_NEEDED";
-    public let PLAYBACK_STATUS_CHANGED = "OCast:PLAYBACK_STATUS_CHANGED";
+class OCastManager: RCTEventEmitter, DeviceCenterDelegate {
+    public let AP_LIST_OBTAINED = "OCast:AP_LIST_OBTAINED"
+    public let DEVICE_AVAILABLE = "OCast:DEVICE_AVAILABLE"
+    public let DEVICE_CONNECTED = "OCast:DEVICE_CONNECTED"
+    public let DEVICE_DISCONNECTED = "OCast:DEVICE_DISCONNECTED"
+    public let DEVICE_LOST = "OCast:DEVICE_LOST"
+    public let DEVICE_PAIRED = "OCast:DEVICE_PAIRED"
+    public let ERROR_EVENT = "OCast:ERROR_EVENT"
+    public let METADATA_CHANGED = "OCast:METADATA_CHANGED"
+    public let PIN_NEEDED = "OCast:PIN_NEEDED"
+    public let PLAYBACK_STATUS_CHANGED = "OCast:PLAYBACK_STATUS_CHANGED"
 
-    private let CAST_FAILED = "CAST_FAILED";
-    private let CONNECT_FAILED = "CONNECT_FAILED";
-    fileprivate let DEVICE_ERROR = "DEVICE_ERROR";
-    private let DISCONNECT_FAILED = "DISCONNECT_FAILED";
-    private let METADATA_UPDATE_FAILED = "METADATA_UPDATE_FAILED";
-    private let MUTE_FAILED = "MUTE_FAILED";
-    private let PAIRING_ERROR = "PAIRING_ERROR";
-    private let PAUSE_FAILED = "PAUSE_FAILED";
-    private let PLAYBACK_STATUS_UPDATE_FAILED = "PLAYBACK_STATUS_UPDATE_FAILED";
-    private let RESUME_FAILED = "RESUME_FAILED";
-    private let SEEK_FAILED = "SEEK_FAILED";
-    private let SETTING_TRACK_FAILED = "SETTING_TRACK_FAILED";
-    private let SSL_ERROR = "SSL_ERROR";
-    private let STOP_FAILED = "STOP_FAILED";
-    private let VOLUME_FAILED = "VOLUME_FAILED";
+    private let CAST_FAILED = "CAST_FAILED"
+    private let CONNECT_FAILED = "CONNECT_FAILED"
+    fileprivate let DEVICE_ERROR = "DEVICE_ERROR"
+    private let DISCONNECT_FAILED = "DISCONNECT_FAILED"
+    private let METADATA_UPDATE_FAILED = "METADATA_UPDATE_FAILED"
+    private let MUTE_FAILED = "MUTE_FAILED"
+    private let PAIRING_ERROR = "PAIRING_ERROR"
+    private let PAUSE_FAILED = "PAUSE_FAILED"
+    private let PLAYBACK_STATUS_UPDATE_FAILED = "PLAYBACK_STATUS_UPDATE_FAILED"
+    private let RESUME_FAILED = "RESUME_FAILED"
+    private let SEEK_FAILED = "SEEK_FAILED"
+    private let SETTING_TRACK_FAILED = "SETTING_TRACK_FAILED"
+    private let SSL_ERROR = "SSL_ERROR"
+    private let STOP_FAILED = "STOP_FAILED"
+    private let VOLUME_FAILED = "VOLUME_FAILED"
 
     fileprivate var device: Device?
     fileprivate var devices = [Device]()
+    let deviceCenter = DeviceCenter()
 
-    fileprivate var applicationController: ApplicationController?
-    fileprivate var mediaController: MediaController?
-    fileprivate var discoveryManager: DeviceDiscovery?
-    fileprivate var deviceManager: DeviceManager?
-    fileprivate var privateSettings: PrivateSettings?
-    fileprivate var lastState: PlayerState?
+    fileprivate var lastState: MediaPlaybackState?
 
     fileprivate var applicationName: String = ""
 
     override init() {
-        // Register Vendor and init DeviceDiscovery
-        DeviceManager.registerDriver(InnopiaDriver.self, forManufacturer: "Innopia")
-        self.discoveryManager = DeviceDiscovery(forTargets: [InnopiaDriver.searchTarget])
-
         super.init()
+        deviceCenter.delegate = self
+        deviceCenter.discoveryInterval = 5
+        // Register Vendor and init DeviceDiscovery
+        deviceCenter.registerDevice(InnopiaDevice.self, forManufacturer: "Innopia")
+    }
 
-        self.discoveryManager?.delegate = self
+    @objc override static func requiresMainQueueSetup() -> Bool {
+        return false
     }
 
     @objc
-    override func constantsToExport() -> [AnyHashable : Any]! {
+    override func constantsToExport() -> [AnyHashable: Any]! {
         return [
             "AP_LIST_OBTAINED": AP_LIST_OBTAINED,
             "DEVICE_AVAILABLE": DEVICE_AVAILABLE,
@@ -71,14 +70,14 @@ class OCastManager: RCTEventEmitter {
             "MEDIA_TYPE_VIDEO": MediaType.video.rawValue,
             "METADATA_CHANGED": METADATA_CHANGED,
             "PIN_NEEDED": PIN_NEEDED,
-            "PLAYBACK_STATE_KEY_BUFFERING": PlayerState.buffering.rawValue,
-            "PLAYBACK_STATE_KEY_FAILED": PlayerState.unknown.rawValue,
-            "PLAYBACK_STATE_KEY_IDLE": PlayerState.idle.rawValue,
-            "PLAYBACK_STATE_KEY_PAUSED": PlayerState.paused.rawValue,
-            "PLAYBACK_STATE_KEY_PLAYING": PlayerState.playing.rawValue,
+            "PLAYBACK_STATE_KEY_BUFFERING": MediaPlaybackState.buffering.rawValue,
+            "PLAYBACK_STATE_KEY_FAILED": MediaPlaybackState.unknown.rawValue,
+            "PLAYBACK_STATE_KEY_IDLE": MediaPlaybackState.idle.rawValue,
+            "PLAYBACK_STATE_KEY_PAUSED": MediaPlaybackState.paused.rawValue,
+            "PLAYBACK_STATE_KEY_PLAYING": MediaPlaybackState.playing.rawValue,
             "PLAYBACK_STATUS_CHANGED": PLAYBACK_STATUS_CHANGED,
-            "TRANSFER_MODE_BUFFERED": TransferMode.buffered.rawValue,
-            "TRANSFER_MODE_STREAMED": TransferMode.streamed.rawValue
+            "TRANSFER_MODE_BUFFERED": MediaTransferMode.buffered.rawValue,
+            "TRANSFER_MODE_STREAMED": MediaTransferMode.streamed.rawValue,
         ]
     }
 
@@ -94,337 +93,440 @@ class OCastManager: RCTEventEmitter {
             ERROR_EVENT,
             METADATA_CHANGED,
             PIN_NEEDED,
-            PLAYBACK_STATUS_CHANGED
-        ];
+            PLAYBACK_STATUS_CHANGED,
+        ]
     }
 
     @objc
     func requiresMainQueueSetup() -> Bool {
-        return true;
+        return true
+    }
+
+    private func transformDeviceForJS(device: Device?) -> [String: String?] {
+        return ["id": device?.upnpID, "name": device?.friendlyName, "ipAddress": device?.host]
+    }
+
+    func center(_: DeviceCenter, didAdd devices: [Device]) {
+        if devices.count > 0 {
+            for device in devices {
+                let deviceTransformed = transformDeviceForJS(device: device)
+                print("Ocast:didAdd device \(deviceTransformed.description)")
+                sendEvent(withName: DEVICE_AVAILABLE, body: deviceTransformed)
+            }
+        } else {
+            print("Ocast:didAdd no devices to be added")
+        }
+
+        self.devices.append(contentsOf: devices)
+    }
+
+    func center(_ center: DeviceCenter, didRemove devices: [Device]) {
+        if devices.count > 0 {
+            for removedDevice in devices {
+                let deviceTransformed = transformDeviceForJS(device: removedDevice)
+                print("Ocast:didRemove device \(deviceTransformed.description)")
+                dump(removedDevice) // print device key value pairs
+                sendEvent(withName: DEVICE_LOST, body: deviceTransformed)
+            }
+        } else {
+            print("Ocast:didRemove no devices to be removed")
+        }
+
+        self.devices = center.devices
+    }
+
+    func centerDidStop(_: DeviceCenter, withError error: Error?) {
+        if let error = error {
+            print("OCast:centerDidStop: device discovery stopped with error: \(error.localizedDescription)")
+        } else {
+            print("OCast:centerDidStop: without error")
+        }
+    }
+
+    @objc func applicationDidEnterBackground() {
+        print("OCast:applicationDidEnterBackground and pauseDiscovery")
+        deviceCenter.discoveryInterval = 30
+        deviceCenter.pauseDiscovery()
+    }
+
+    @objc func applicationWillEnterForeground() {
+        print("OCast:applicationWillEnterForeground and startScan")
+        deviceCenter.discoveryInterval = 5
+        startScan()
     }
 
     @objc(startScan)
-    func startScan() -> Void {
-        print("OCast: startScan")
-
-        self.devices = [Device]()
-        self.discoveryManager?.start()
+    func startScan() {
+        for device in devices {
+            print("Ocast:startScan devices: \(device.friendlyName)")
+        }
+        if !deviceCenter.discoveryIsRunning {
+            print("OCast:startScan")
+            deviceCenter.resumeDiscovery()
+        } else {
+            print("OCast:startScan discoveryIsRunning already")
+        }
     }
 
     @objc(stopScan)
-    func stopScan() -> Void {
-        print("OCast: stopScan")
-
-        self.discoveryManager?.stop()
+    func stopScan() {
+        for device in devices {
+            print("Ocast:stopScan devices: \(device.friendlyName)")
+        }
+        if deviceCenter.discoveryIsRunning {
+            print("OCast:stopScan")
+            deviceCenter.pauseDiscovery() // had to pause, stop removed the device
+        }
     }
 
     @objc(pairDevice:)
-    func pairDevice(deviceId: String) -> Void {
-        guard let device = self.devices.first(where: { $0.deviceID == deviceId }) else {
-            print("Device not found")
-            self.emitErrorEvent(error: self.PAIRING_ERROR)
+    func pairDevice(deviceId: String) {
+        print("Ocast:device tryin to pair")
+        if let device = devices.first(where: { $0.upnpID == deviceId }) {
+            print("Ocast:device to be paired \(transformDeviceForJS(device: device).description)")
+            self.device = device
+            initDevice(useOldCert: false, successCallback: sendPinNeeded)
+        } else {
+            print("Ocast:Device with deviceId \(deviceId) not found")
+            emitErrorEvent(error: PAIRING_ERROR)
             return
         }
-
-        self.device = device
-        self.initWithCert(useOldCert: false)
-    }
-
-    func initWithCert(useOldCert oldCert: Bool) -> Void {
-        self.initDeviceManager(useOldCert: oldCert)
-
-        self.initPrivateSettings(onSuccess: {
-            self.privateSettings?.getInfo(onSuccess: { (versionInfo) in
-                print("Version info obtained.")
-                self.sendEvent(withName: self.PIN_NEEDED, body: [
-                    "id": self.device?.deviceID,
-                    "name": self.device?.friendlyName,
-                    "ipAddress": self.device?.ipAddress,
-                ])
-            }, onError: { (error) in
-                print("Unexpected error while getting version info: \(error as Optional).")
-                self.emitErrorEvent(error: self.PAIRING_ERROR)
-            })
-        }, onError: {
-            if (oldCert == false) {
-                print("Failed to initialize private settings with new cert. Trying failover to old cert...")
-                self.initWithCert(useOldCert: true)
-            } else {
-                print("Failed to initialize private settings with old cert. Sending PAIRING_ERROR...")
-                self.emitErrorEvent(error: self.PAIRING_ERROR)
-            }
-        })
     }
 
     @objc(connectToDevice:withApplicationName:)
-    func connectToDevice(deviceId: String, withApplicationName applicationName: String) -> Void {
-        self.applicationName = applicationName
-
-        guard let device = self.devices.first(where: { $0.deviceID == deviceId }) else {
-            print("Device not found")
-            self.emitErrorEvent(error: self.CONNECT_FAILED)
-            return
+    func connectToDevice(deviceId: String, withApplicationName applicationName: String) {
+        print("Ocast:trying to connect to device with deviceId \(deviceId) and applicationName \(applicationName)")
+        if let device = devices.first(where: { $0.upnpID == deviceId }) {
+            dump(device)
+            print("Ocast:Device \(device.friendlyName) in connectToDevice found")
+            self.device = device
+            self.applicationName = applicationName
+            initDevice(useOldCert: false, successCallback: startApplication)
+        } else {
+            print("Ocast:Device in connectToDevice not found")
+            emitErrorEvent(error: CONNECT_FAILED)
         }
-
-        self.device = device
-        self.connectWithCert(useOldCert: false)
     }
 
-    func connectWithCert(useOldCert oldCert: Bool) {
-        self.initDeviceManager(useOldCert: oldCert)
-
-        self.deviceManager?.applicationController(for: self.applicationName, onSuccess: { (applicationController) in
-            applicationController.start(onSuccess: {
-              self.applicationController = applicationController
-
-              self.mediaController = self.applicationController?.mediaController
-              self.mediaController?.delegate = self
-
-              self.sendEvent(withName: self.DEVICE_CONNECTED, body: [
-                  "id": self.device?.deviceID,
-                  "name": self.device?.friendlyName,
-              ])
-          }, onError: { (error) in
-              print("Unexpected error while starting the application: \(error as Optional).")
-              self.emitErrorEvent(error: self.CONNECT_FAILED)
-          })
-        }, onError: { (error) in
-            if (oldCert == false) {
-                print("Failed to connect to device settings with new cert. Trying failover to old cert...")
-                self.connectWithCert(useOldCert: true)
-            } else {
-                print("Unexpected error while creating the application controller: \(error as Optional).")
-                self.emitErrorEvent(error: self.CONNECT_FAILED)
-            }
-        })
+    private func startApplication() {
+        if device != nil {
+            print("Ocast:trying to start application for \(device!.friendlyName)")
+            device!.startApplication(completion: { error in
+                if let error = error { // TODO: why error here
+                    print("Ocast:Unexpected error while starting the application: \(error.localizedDescription).")
+                    self.emitErrorEvent(error: self.CONNECT_FAILED)
+                } else {
+                    let deviceTransformed = self.transformDeviceForJS(device: self.device!)
+                    self.sendEvent(withName: self.DEVICE_CONNECTED, body: deviceTransformed)
+                }
+            })
+        } else {
+            print("Ocast:trying to start application for unavailable device")
+        }
     }
 
     @objc
-    func reset() -> Void {
-        self.privateSettings?.reset(onSuccess: { () in
-            print("Reset ok.")
-        }, onError: { (error) in
-            print("Unexpected error while resetting: \(error as Optional).")
+    func reset() {
+        device?.privateSettings?.reset(completion: { error in
+            if let error = error {
+                print("Ocast:Unexpected error while resetting: \(error.localizedDescription).")
+            } else {
+                print("Ocast:Reset ok.")
+            }
         })
     }
 
     @objc(scanAPs:)
-    func scanAPs(pinCode: NSNumber) -> Void {
-        self.privateSettings?.scanAPs(pinCode: pinCode.intValue, onSuccess: { (data) in
-            print("APs scan finished.")
+    func scanAPs(pinCode: NSNumber) {
+        device?.privateSettings?.scanAccessPoints(withPINCode: pinCode.intValue, completion: { result, error in
+            if let result = result {
+                print("Ocast:Access points scan finished.")
 
-            var aps = [[String:Any]]()
+                var aps = [[String: Any]]()
 
-            for ap in data {
-                aps.append([
-                    "ssid": ap.ssid!,
-                    "rssi": ap.rssi!,
-                    "security": ap.security!.rawValue
-                ])
+                for ap in result {
+                    aps.append([
+                        "ssid": ap.ssid,
+                        "rssi": ap.rssi,
+                        "security": ap.security.rawValue,
+                    ])
+                }
+
+                let payload = [
+                    "pinCode": pinCode,
+                    "aps": aps,
+                ] as [String: Any]
+
+                self.sendEvent(withName: self.AP_LIST_OBTAINED, body: payload)
+            } else if let error = error {
+                print("Ocast:Unexpected error while scanning APs: \(error.localizedDescription).")
+                self.emitErrorEvent(error: self.PAIRING_ERROR)
+            } else {
+                print("Ocast:Could not find any access points.")
+                self.emitErrorEvent(error: self.PAIRING_ERROR)
             }
-
-            let payload = [
-                "pinCode": pinCode,
-                "aps": aps
-            ] as [String : Any]
-
-            self.sendEvent(withName: self.AP_LIST_OBTAINED, body: payload)
-        }, onError: { (error) in
-            print("Unexpected error while scanning APs: \(error as Optional).")
-            self.emitErrorEvent(error: self.PAIRING_ERROR)
         })
     }
 
     @objc
-    func getAPList() -> Void {
-        self.privateSettings?.getAPList(onSuccess: { (aps) in
-            print("Getting APs finished successfully.")
-            // TODO send event with found aps?
-        }, onError: { (error) in
-            print("Unexpected error while getting APs: \(error as Optional).")
+    func getAPList() {
+        device?.privateSettings?.accessPoints(completion: { result, error in
+            if let result = result {
+                print("Ocast:Getting \(result.count) APs finished successfully.")
+            } else if let error = error {
+                print("Ocast:Unexpected error while getting APs: \(error.localizedDescription).")
+            }
         })
     }
 
     @objc(setAP:)
-    func setAP(apConfig: [String:AnyObject]) -> Void {
-        self.privateSettings?.setAP(
-            pinCode: apConfig["pinCode"] as! Int,
+    func setAP(apConfig: [String: AnyObject]) { // todo add correct type
+        let accessPointParams = SetAccessPointCommandParams(
             ssid: apConfig["ssid"] as! String,
-            bssid: "",
-            security: apConfig["security"] as! Int,
             password: apConfig["password"] as! String,
-            onSuccess: {
-                print("AP successfully set.")
-                self.sendEvent(withName: self.DEVICE_PAIRED, body: [
-                    "id": self.device?.deviceID,
-                    "name": self.device?.friendlyName,
-                    "ipAddress": self.device?.ipAddress,
-                ])
-            }, onError: { (error) in
-                print("Unexpected error while setting the AP: \(error as Optional).")
-                self.emitErrorEvent(error: self.PAIRING_ERROR)
-            }
+            bssid: "",
+            security: WifiSecurity(rawValue: apConfig["security"] as! Int), // todo check if correct type
+            pinCode: apConfig["pinCode"] as! Int
         )
+        device?.privateSettings?.setAccessPoint(accessPointParams, completion: { error in
+            if let error = error {
+                print("Ocast:Unexpected error while setting the AP: \(error.localizedDescription).")
+                self.emitErrorEvent(error: self.PAIRING_ERROR)
+            } else {
+                print("Ocast:AP successfully set.")
+                let deviceTransformed = self.transformDeviceForJS(device: self.device!)
+                self.sendEvent(withName: self.DEVICE_PAIRED, body: deviceTransformed)
+            }
+        })
     }
 
     @objc(setName:)
-    func setName(name: String) -> Void {
-        self.privateSettings?.setDevice(name: "devel-24A8", onSuccess: {
-            print("Name successfully set.")
-        }, onError: { (error) in
-            print("Unexpected error while setting the name: \(error as Optional).")
+    func setName(name _: String) {
+        device?.privateSettings?.setDeviceName("devel-24A8", completion: { error in
+            if let error = error {
+                print("Ocast:Unexpected error while setting the name: \(error.localizedDescription).")
+            } else {
+                print("Ocast:Name successfully set.")
+            }
         })
     }
 
     @objc
-    func disconnect() -> Void {
-        let deviceID = self.device?.deviceID
-        let friendlyName = self.device?.friendlyName
-
-        self.applicationController?.unmanage(stream: self.mediaController!)
-
-        self.sendEvent(withName: self.DEVICE_DISCONNECTED, body: [
-            "id": deviceID,
-            "name": friendlyName,
-        ]);
+    func disconnect() {
+        device?.disconnect(completion: { error in
+            if error != nil {
+                print("Ocast:failed to disconnect")
+            } else {
+                let deviceTransformed = self.transformDeviceForJS(device: self.device!)
+                self.sendEvent(withName: self.DEVICE_DISCONNECTED, body: deviceTransformed)
+            }
+        })
     }
 
     @objc(castMedia:)
-    func castMedia(data: [String:AnyObject]) -> Void {
-        let mediaPrepare = MediaPrepare(
-            url: URL(string: data["url"] as! String)!,
+    func castMedia(data: [String: AnyObject]) { // todo add correct types
+        let mediaPrepare = PrepareMediaCommandParams(
+            url: data["url"] as! String,
             frequency: data["frequency"] as! UInt,
             title: data["title"] as! String,
             subtitle: data["subtitle"] as! String,
-            logo: URL(string: "https://placeholder.com")!,
-            mediaType: MediaType(rawValue: data["mediaType"] as! Int)!,
-            transferMode: TransferMode(rawValue: data["transferMode"] as! Int)!,
-            autoplay: data["autoplay"] as! Bool
+            logo: "https://placeholder.com",
+            mediaType: MediaType(rawValue: data["mediaType"] as! String)!,
+            transferMode: MediaTransferMode(rawValue: data["transferMode"] as! String)!,
+            autoPlay: data["autoplay"] as! Bool
         )
 
-        let options = data["options"] as! [String:Any];
+        let options = data["options"] as! [String: Any]
 
-        self.mediaController?.prepare(for: mediaPrepare, withOptions: options, onSuccess: {
-            print("MediaController prepared")
-        }, onError: { (error) in
-            print("Unexpected error while starting playback: \(error as Optional).")
-            self.emitErrorEvent(error: self.CAST_FAILED);
-        })
+        ensureConnected { [weak self] connected in
+            if connected {
+                self?.device?.prepareMedia(mediaPrepare, withOptions: options, completion: { error in
+                    if let error = error {
+                        print("Ocast:Unexpected error while starting playback: \(error.localizedDescription).")
+                        self?.emitErrorEvent(error: self!.CAST_FAILED)
+                    } else {
+                        print("Ocast:MediaController prepared")
+                    }
+                })
+            }
+        }
     }
 
     @objc(resume)
     func resume() {
-        self.mediaController?.resume(onSuccess: {
-            self.lastState = PlayerState.playing
-            print("Playback successfully resumed")
-        }, onError: { (error) in
-            print("Unexpected error while resuming playback: \(error as Optional).")
-            self.emitErrorEvent(error: self.RESUME_FAILED)
-        })
+        ensureConnected { [weak self] connected in
+            if connected {
+                if self?.lastState == MediaPlaybackState.paused {
+                    self?.device?.resumeMedia(completion: { error in
+                        if let error = error {
+                            print("Ocast:Unexpected error while resuming playback: \(error.localizedDescription).")
+                            self?.emitErrorEvent(error: self!.RESUME_FAILED)
+                        } else {
+                            self?.lastState = MediaPlaybackState.playing
+                            print("Ocast:Playback successfully resumed")
+                        }
+                    })
+                }
+            }
+        }
     }
 
     @objc(pause)
     func pause() {
-        self.mediaController?.pause(onSuccess: {
-            self.lastState = PlayerState.paused
-            print("Pause succesful")
-        }, onError: { (error) in
-            print("Unexpected error while pausing playback: \(error as Optional).")
-            self.emitErrorEvent(error: self.PAUSE_FAILED)
-        })
+        ensureConnected { [weak self] connected in
+            if connected {
+                if self?.lastState == MediaPlaybackState.playing {
+                    self?.device?.pauseMedia(completion: { error in
+                        if let error = error {
+                            print("Ocast:Unexpected error while pausing playback: \(error.localizedDescription).")
+                            self?.emitErrorEvent(error: self!.PAUSE_FAILED)
+                        } else {
+                            self?.lastState = MediaPlaybackState.paused
+                            print("Ocast:Pause succesful")
+                        }
+                    })
+                }
+            }
+        }
     }
 
     @objc(seek:)
     func seek(time: NSNumber) {
-        if (lastState == PlayerState.paused) {
-            print("Player paused, need to resume first ...")
+        if lastState == MediaPlaybackState.paused {
+            print("Ocast:Player paused, need to resume first ...")
 
-            self.mediaController?.resume(onSuccess: {
-                print("Playback successfully resumed")
-                self.doSeek(time: time)
-            }, onError: { (error) in
-                print("Unexpected error while resuming playback: \(error as Optional).")
-                self.emitErrorEvent(error: self.RESUME_FAILED)
+            device?.resumeMedia(completion: { error in
+                if let error = error {
+                    print("Ocast:Unexpected error while resuming playback: \(error.localizedDescription).")
+                    self.emitErrorEvent(error: self.RESUME_FAILED)
+                } else {
+                    print("Ocast:Playback successfully resumed")
+                    self.doSeek(time: time)
+                }
             })
         } else {
             doSeek(time: time)
         }
     }
 
-    func doSeek(time: NSNumber) {
-        let positionSeconds = time.uintValue / 1000
-        print("Trying to seek to position \(positionSeconds) ...")
+    func doSeek(time: NSNumber?) {
+        guard let time = time else { return }
 
-        self.mediaController?.seek(to: positionSeconds, onSuccess: {
-            print("Seek successful")
-        }, onError: { (error) in
-            print("Unexpected error while trying to seek: \(error as Optional).")
-            self.emitErrorEvent(error: self.SEEK_FAILED)
-        })
+        ensureConnected { [weak self] connected in
+            guard let `self` = self else { return }
+            if connected {
+                let positionSeconds = time.uintValue / 1000
+                print("Ocast:Trying to seek to position \(positionSeconds) ...")
+
+                self.device?.seekMedia(to: Double(positionSeconds), completion: { error in
+                    if let error = error {
+                        print("Ocast:Unexpected error while trying to seek: \(error.localizedDescription).")
+                        self.emitErrorEvent(error: self.SEEK_FAILED)
+                    } else {
+                        print("Ocast:Seek successful")
+                    }
+                })
+            }
+        }
     }
 
     @objc(stop)
     func stop() {
-        self.mediaController?.stop(onSuccess: {
-            print("Playback successfully stopped")
-        }, onError: { (error) in
-            print("Unexpected error while trying to stop the playback: \(error as Optional).")
-            self.emitErrorEvent(error: self.STOP_FAILED)
-        })
+        ensureConnected { [weak self] connected in
+            if connected {
+                self?.device?.stopMedia(completion: { error in
+                    if let error = error {
+                        print("Ocast:Unexpected error while trying to stop the playback: \(error.localizedDescription).")
+                        self?.emitErrorEvent(error: self!.STOP_FAILED)
+                    } else {
+                        print("Ocast:Playback successfully stopped")
+                    }
+                })
+            }
+        }
     }
 
     @objc(volume:)
     func volume(level: NSNumber) {
-      self.mediaController?.volume(to: Float(truncating: level) / 100, onSuccess: {
-            print("Volume successfully set")
-        }, onError: { (error) in
-            print("Unexpected error while setting the volume: \(error as Optional).")
-            self.emitErrorEvent(error: self.VOLUME_FAILED)
-        })
+        ensureConnected { [weak self] connected in
+            guard let `self` = self else { return }
+            if connected {
+                let volume = Double(truncating: level) / 100
+                self.device?.setMediaVolume(volume, completion: { error in
+                    if let error = error {
+                        print("Ocast:Unexpected error while setting the volume: \(error.localizedDescription).")
+                        self.emitErrorEvent(error: self.VOLUME_FAILED)
+                    } else {
+                        print("Ocast:Volume successfully set")
+                    }
+                })
+            }
+        }
     }
 
     @objc(mute:)
     func mute(mute: Bool) {
-        self.mediaController?.mute(isMuted: mute, onSuccess: {
-            print("Mute successfully set to \(mute)")
-        }, onError: { (error) in
-            print("Unexpected error while setting mute: \(error as Optional).")
-            self.emitErrorEvent(error: self.MUTE_FAILED)
+        device?.muteMedia(mute, completion: { error in
+            if let error = error {
+                print("Ocast:Unexpected error while setting mute: \(error.localizedDescription).")
+                self.emitErrorEvent(error: self.MUTE_FAILED)
+            } else {
+                print("Ocast:Mute successfully set to \(mute)")
+            }
         })
     }
 
-    // TODO not tested
+    // TODO: not tested
     @objc(updateMetadata)
     func updateMetadata() {
-        self.mediaController?.metadata(onSuccess: { (metadata) in
-            print("Metadata received")
-            self.emitMetadataEvent(metadata: metadata)
-        }, onError: { (error) in
-            print("Unexpected error while getting metadata: \(error as Optional).")
-            self.emitErrorEvent(error: self.METADATA_UPDATE_FAILED)
-        })
+        ensureConnected { [weak self] connected in
+            if connected {
+                self?.device?.mediaMetadata(completion: { metadata, error in
+                    if let error = error {
+                        print("Ocast:Unexpected error while getting metadata: \(error.localizedDescription).")
+                        self?.emitErrorEvent(error: self!.METADATA_UPDATE_FAILED)
+                    } else if let metadata = metadata {
+                        print("Ocast:Metadata received")
+                        self?.emitMetadataEvent(metadata: metadata)
+                    }
+                })
+            }
+        }
     }
 
     @objc(updatePlaybackStatus)
     func updatePlaybackStatus() {
-        self.mediaController?.playbackStatus(onSuccess: { (playbackStatus) in
-            print("Playback status received")
-            self.lastState = playbackStatus.state
-            self.emitPlaybackStatusEvent(playbackStatus: playbackStatus)
-        }, onError: { (error) in
-            print("Unexpected error while getting playback status: \(error as Optional).")
-            self.emitErrorEvent(error: self.PLAYBACK_STATUS_UPDATE_FAILED)
-        })
+        ensureConnected { [weak self] connected in
+            if connected {
+                self?.device?.mediaPlaybackStatus(completion: { playbackStatus, error in
+                    if let error = error {
+                        print("Ocast:Unexpected error while getting playback status: \(error.localizedDescription).")
+                        self?.emitErrorEvent(error: self!.PLAYBACK_STATUS_UPDATE_FAILED)
+                    } else if let playbackStatus = playbackStatus {
+                        print("Ocast:Playback status received")
+                        self?.lastState = playbackStatus.state
+                        self?.emitPlaybackStatusEvent(playbackStatus: playbackStatus)
+                    }
+                })
+            }
+        }
     }
 
-    // TODO not tested
+    // TODO: not tested
     @objc(setAudioTrack:)
     func setAudioTrack(trackId: String) {
-        self.mediaController?.track(type: TrackType.audio, id: trackId, enabled: true, onSuccess: {
-            print("Audio track \(trackId) successfully set")
-        }, onError: { (error) in
-            print("Unexpected error while setting audio track \(trackId)")
-            self.emitErrorEvent(error: self.SETTING_TRACK_FAILED)
+        let mediaTrackParams = SetMediaTrackCommandParams(
+            trackId: trackId,
+            type: MediaTrackType.audio,
+            enabled: true
+        )
+        device?.setMediaTrack(mediaTrackParams, completion: { error in
+            if let error = error {
+                print("Ocast:Unexpected error \(error.localizedDescription) while setting audio track \(trackId)")
+                self.emitErrorEvent(error: self.SETTING_TRACK_FAILED)
+            } else {
+                print("Ocast:Audio track \(trackId) successfully set")
+            }
         })
     }
 
@@ -432,29 +534,29 @@ class OCastManager: RCTEventEmitter {
         sendEvent(withName: ERROR_EVENT, body: error)
     }
 
-    func emitMetadataEvent(metadata: Metadata) {
-        var audioTracks = [[String:Any]]()
-        var subtitleTracks = [[String:Any]]()
+    func emitMetadataEvent(metadata: MediaMetadata) {
+        var audioTracks = [[String: Any]]()
+        var subtitleTracks = [[String: Any]]()
 
-        for audioTrack in metadata.audioTracks! {
+        for audioTrack in metadata.audioTracks {
             audioTracks.append([
-                "id": audioTrack.id,
+                "id": audioTrack.trackId,
                 "enabled": audioTrack.enabled,
                 "label": audioTrack.label,
-                "language": audioTrack.language
+                "language": audioTrack.language,
             ])
         }
 
-        for subtitleTrack in metadata.textTracks! {
+        for subtitleTrack in metadata.subtitleTracks {
             subtitleTracks.append([
-                "id": subtitleTrack.id,
+                "id": subtitleTrack.trackId,
                 "enabled": subtitleTrack.enabled,
                 "label": subtitleTrack.enabled,
-                "language": subtitleTrack.language
+                "language": subtitleTrack.language,
             ])
         }
 
-        self.sendEvent(withName: METADATA_CHANGED, body: [
+        sendEvent(withName: METADATA_CHANGED, body: [
             "title": metadata.title,
             "subtitle": metadata.subtitle,
             "audioTracks": audioTracks,
@@ -462,28 +564,55 @@ class OCastManager: RCTEventEmitter {
         ])
     }
 
-    func emitPlaybackStatusEvent(playbackStatus: PlaybackStatus) {
-        self.sendEvent(withName: PLAYBACK_STATUS_CHANGED, body: [
+    func emitPlaybackStatusEvent(playbackStatus: MediaPlaybackStatus) {
+        sendEvent(withName: PLAYBACK_STATUS_CHANGED, body: [
             "duration": playbackStatus.duration,
-            "muted": playbackStatus.mute,
+            "muted": playbackStatus.muted,
             "position": playbackStatus.position,
             "state": playbackStatus.state.rawValue,
             "volume": playbackStatus.volume * 100,
         ])
     }
 
-    func initDeviceManager(useOldCert oldCert: Bool) -> Void {
-        self.deviceManager = DeviceManager(with: self.device!, sslConfiguration: sslConfiguration(useOldCert: oldCert))
-        self.deviceManager?.delegate = self
+    private func sendPinNeeded() {
+        device?.privateSettings?.versionInfo(completion: { versionInfo, error in
+            if versionInfo != nil {
+                print("Ocast:Version info obtained.")
+                let deviceTransformed = self.transformDeviceForJS(device: self.device)
+                self.sendEvent(withName: self.PIN_NEEDED, body: deviceTransformed)
+            } else if let error = error {
+                print("Ocast:Unexpected error while getting version info: \(error.localizedDescription).")
+                self.emitErrorEvent(error: self.PAIRING_ERROR)
+            } else {
+                print("Ocast:Unable to get version info.")
+                self.emitErrorEvent(error: self.PAIRING_ERROR)
+            }
+        })
     }
 
-    func initPrivateSettings(onSuccess:@escaping () -> (), onError:@escaping () -> ()) -> Void {
-        self.deviceManager?.privateSettingsController(onSuccess: { (privateSettings) in
-            self.privateSettings = privateSettings
-            onSuccess()
-        }, onError: { (error) in
-            print("Unexpected error while getting the private settings controller: \(error as Optional).")
-            onError()
+    private func ensureConnected(completion: @escaping (Bool) -> Void) {
+        if device!.state != .connected {
+            print("Ocast:ensureConnected \(device!.friendlyName) was not connected, trying to reinit the device")
+            initDevice(useOldCert: false, successCallback: startApplication)
+        } else {
+            print("Ocast:ensureConnected \(device!.friendlyName) is connected")
+            completion(true)
+        }
+    }
+
+    func initDevice(useOldCert oldCert: Bool, successCallback: @escaping () -> Void) {
+        device?.connect(sslConfiguration(useOldCert: oldCert), completion: { error in
+            if let error = error {
+                if oldCert == false {
+                    print("Ocast:Failed to initialize device with new cert. Trying failover to old cert...")
+                    self.initDevice(useOldCert: true, successCallback: successCallback)
+                } else {
+                    print("Ocast:device init failed with \(error.localizedDescription)")
+                }
+            } else {
+                print("Ocast:device init for \(self.device!.friendlyName) success")
+                successCallback()
+            }
         })
     }
 
@@ -493,61 +622,34 @@ class OCastManager: RCTEventEmitter {
             let serverCertificatePath = Bundle.main.path(forResource: "orange_device_firmware_ca_prod_cer", ofType: ".der"),
             let serverCertificateData = try? Data(contentsOf: URL(fileURLWithPath: serverCertificatePath)),
             let clientCertificatePath = Bundle.main.path(forResource: oldCert ? "client" : "DEM412", ofType: "p12"),
-            let clientCertificateData = try? Data(contentsOf: URL(fileURLWithPath: clientCertificatePath)) else { return nil }
+            let clientCertificateData = try? URL(fileURLWithPath: clientCertificatePath) else { return nil }
+
+        print("Ocast:sslConfiguration: rootCertificateData \(rootCertificateData.description), serverCertificatePath: \(serverCertificatePath.description), serverCertificateData: \(serverCertificateData.description), clientCertificatePath: \(clientCertificatePath.description), clientCertificateData: \(clientCertificateData.description)")
 
         let sslConfigurationClientCertificate = SSLConfigurationClientCertificate(certificate: clientCertificateData, password: oldCert ? "P9iueiUdvj8" : "7X;Pzy0lf{iZ")
         let sslConfiguration = SSLConfiguration(deviceCertificates: [rootCertificateData, serverCertificateData], clientCertificate: sslConfigurationClientCertificate)
         sslConfiguration.validatesHost = false
         sslConfiguration.validatesCertificateChain = false
         sslConfiguration.disablesSSLCertificateValidation = true
-
+        print("Ocast:sslConfiguration: \(sslConfiguration.description)")
         return sslConfiguration
     }
 }
 
-extension OCastManager: DeviceDiscoveryDelegate {
-    func deviceDiscovery(_ deviceDiscovery: DeviceDiscovery, didAddDevice device: Device) {
-        print("OCast:DeviceDiscoveryDelegate: device added \(device.friendlyName)")
-        self.devices.append(device)
-
-        self.sendEvent(withName: DEVICE_AVAILABLE, body: [
-            "id": device.deviceID,
-            "name": device.friendlyName,
-            "ipAddress": device.ipAddress,
-        ])
+// TODO: not sure if I need this at all
+extension OCastManager: WebSocketDelegate { // DeviceDiscoveryDelegate was the closest thing but is no longer public
+    func websocket(_: WebSocketProtocol, didReceiveMessage message: String) {
+        print("OCast:WebSocketDelegate: application didReceiveMessage url: \(message)")
     }
 
-    func deviceDiscovery(_ deviceDiscovery: DeviceDiscovery, didRemoveDevice device: Device) {
-        print("OCast:DeviceDiscoveryDelegate: device removed")
-        self.devices = self.devices.filter { $0.deviceID != device.deviceID }
-
-        self.sendEvent(withName: DEVICE_LOST, body: [
-            "id": device.deviceID,
-            "name": device.friendlyName,
-            "ipAddress": device.ipAddress,
-        ])
+    func websocket(_: WebSocketProtocol, didConnectTo url: URL?) {
+        print("OCast:WebSocketDelegate: application didConnectTo url: \(url!)")
     }
 
-    func deviceDiscoveryDidStop(_ deviceDiscovery: DeviceDiscovery, withError error: Error?) {
-        print("OCast:DeviceDiscoveryDelegate: device discovery stopped")
-    }
-}
-
-extension OCastManager: DeviceManagerDelegate {
-    func deviceManager(_ deviceManager: DeviceManager, applicationDidDisconnectWithError error: NSError) {
-        print("OCast:DeviceManagerDelegate: application did disconnect with error: \(error)")
-        self.emitErrorEvent(error: self.DEVICE_ERROR)
-    }
-}
-
-extension OCastManager: MediaControllerDelegate {
-    func mediaController(_ mediaController: MediaController, didReceivePlaybackStatus playbackStatus: PlaybackStatus) {
-        print("OCast:MediaControllerDelegate: onPlaybackStatus")
-        self.emitPlaybackStatusEvent(playbackStatus: playbackStatus)
-    }
-
-    func mediaController(_ mediaController: MediaController, didReceiveMetadata metadata: Metadata) {
-        print("OCast:MediaControllerDelegate: onMetaDataChanged")
-        self.emitMetadataEvent(metadata: metadata)
+    func websocket(_: WebSocketProtocol, didDisconnectWith error: Error?) {
+        if error != nil {
+            print("OCast:WebSocketDelegate: application did disconnect with error: \(error!)")
+            emitErrorEvent(error: DEVICE_ERROR)
+        }
     }
 }
